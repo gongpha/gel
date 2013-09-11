@@ -1,0 +1,5 @@
+pragma program
+
+met main() {
+psout("hello world");
+}
