@@ -1,0 +1,4 @@
+met main (int) () {
+	psoutnl("hello world");
+	return 0;
+}
