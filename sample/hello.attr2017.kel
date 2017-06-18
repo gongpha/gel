@@ -1,0 +1,6 @@
+<@include "io">
+
+met main() -> i32 {
+	psoutwnl("hello world !!!!!!!!!!!!!!!!");
+	done 0;
+}
