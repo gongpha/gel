@@ -1,7 +1,7 @@
 ﻿#ifndef GELC_TOKENIZER_H
 #define GELC_TOKENIZER_H
 
-#define GELC_CONST_OPERATORS_SINGLE = "+-*/^&%!:=.,<>"
+#define GELC_CONST_OPERATORS_SINGLE "+-*/^&%!:=.,<>"
 #define GELC_CONST_OPERATORS {"=>", "<=", ">=", "==", "!=", "..."}
 
 #include <stddef.h>
@@ -16,7 +16,7 @@ typedef enum {
 	TT_NONE,
 	TT_COMMENT,
 	TT_IDENT,
-	TT_STRING,
+	TT_STRING, // Unescaped !!!
 	TT_INT,
 	TT_REAL,
 	TT_OPERATOR,
@@ -33,15 +33,26 @@ typedef struct {
 	gelc_token_type type;
 	union {
 		gelc_token_literal literal;
+		int integer;
+		const wchar_t* operator;
 	} data;
-	unsigned int line;
-	unsigned int pos;
 } gelc_token;
 
 typedef enum {
 	TUNE_INDENT = 0x00000001,
 
 } gelc_tokenizer_tune;
+
+typedef enum {
+	PHINT_DEC,
+	PHINT_HEX
+} gelc_tokenizer_hint;
+
+typedef enum {
+	ERROR_OK,
+
+	ERROR_INVALID_REAL,
+} gelc_tokenizer_error;
 
 
 typedef struct {
@@ -53,8 +64,12 @@ typedef struct {
 	unsigned int line;
 	wchar_t* begin;
 	wchar_t* line_cursor_start;
+	int paren_level;
+	int str_escaping;
+	gelc_tokenizer_hint parsing_hint;
 
 	//
+	gelc_tokenizer_error error;
 	gelc_token result;
 
 	// tune
