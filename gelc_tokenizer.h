@@ -19,8 +19,11 @@ typedef enum {
 	TT_FREEZE, // just like comment, but highlighted in blue (#) like Python
 	TT_IDENT,
 	TT_STRING, // NOT UNESCAPED YET !!!
-	TT_INT,
+	TT_INT_DEC,
 	TT_INT_HEX,
+	TT_INT_BIN,
+	TT_INT_BINARY,
+	// NO OCT HOHO
 	TT_REAL,
 	TT_OPERATOR,
 	TT_STABLE_LINK,
@@ -50,7 +53,9 @@ typedef enum {
 	ERROR_OK,
 
 	ERROR_INVALID_REAL,
+	ERROR_INVALID_DEC,
 	ERROR_INVALID_HEX,
+	ERROR_INVALID_BIN,
 	ERROR_OUT_OF_MEM,
 	ERROR_WRONG_INDENT,
 } gelc_tokenizer_error;

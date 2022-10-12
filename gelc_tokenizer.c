@@ -43,7 +43,6 @@ int is_whitespace(wchar_t ch) {
 void alloc_num(gelc_tokenizer* t) {
 	t->result.type = t->scope;
 	subsource(&t->result.data.subsource, t->begin, t->cursor);
-	t->scope = TT_NONE;
 }
 
 void advance(gelc_tokenizer* t) {
@@ -140,16 +139,29 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 
 			int is_period = ch == L'.';
 			int is_num = ch >= L'0' && ch <= L'9';
-			if (is_period || is_num) {
-				if ((is_num && !t->parsing_ident) || is_period) {
-					if (terminate_ident(t)) return 1;
-					t->scope = (is_period) ? TT_REAL : TT_INT;
-					t->begin = t->cursor;
-					advance(t);
-					continue;
-				}
-			}
 
+			if (is_num || is_period) {
+				gelc_token_type tt = TT_INT_DEC;
+				if (ch == L'0') {
+					if (*(t->cursor + 1) == L'x') {
+						tt = TT_INT_HEX;
+					}
+					else if (*(t->cursor + 1) == L'b') {
+						tt = TT_INT_BIN;
+					}
+				}
+				else if (is_period) {
+					tt = TT_REAL;
+				}
+				if (terminate_ident(t)) return 1;
+				t->scope = tt;
+				t->begin = t->cursor;
+				if (tt == TT_INT_HEX || tt == TT_INT_BIN) {
+					advance_big(t, 2);
+				} else advance(t);
+				
+				continue;
+			}
 
 			const wchar_t* operators[] = GELC_CONST_OPERATORS;
 			const wchar_t operatorss[] = GELC_CONST_OPERATORS_SINGLE;
@@ -204,67 +216,47 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 			advance(t);
 			break;
 		case TT_REAL:
-		case TT_INT:
+		case TT_INT_DEC:
 		case TT_INT_HEX:
-			if (ch >= L'0' && ch <= L'9') advance(t);
-			else if (
-				t->scope == TT_INT_HEX &&
-				(
-					(
-						ch >= L'a' && ch <= L'f'
-						)
-					|| (
-						ch >= L'A' && ch <= L'F'
-						)
-					)
-				) advance(t);
-			else if (ch == L'.') {
-				if (t->scope == TT_REAL) {
-					// passing float. BUT WHY AGAIN
-					t->error = ERROR_INVALID_REAL;
-					return 1;
-				}
-				else if (t->scope == TT_INT_HEX) {
-					// passing hex. BUT WHY FLOAT
-					t->error = ERROR_INVALID_HEX;
-					return 1;
-				}
-				t->scope = TT_REAL;
+		case TT_INT_BIN:
+			if (is_whitespace(ch) || ch == L'\n') {
+				// k
+				alloc_num(t);
+				t->scope = TT_NONE;
 				advance(t);
+				return 1;
 			}
-			else if (ch == L'x' && t->begin == t->cursor - 1 && t->scope != TT_INT_HEX) {
-				// Hex
-				if (*t->begin != L'0') {
-					// not 0x ? 1x 2x 3x ... NO
-					t->error = ERROR_INVALID_HEX;
-					return 1;
-				}
-				else if (t->scope == TT_REAL) {
-					// HEX != REAL BRO
-					t->error = ERROR_INVALID_REAL;
-					return 1;
-				}
-				t->scope = TT_INT_HEX;
-				advance(t);
-			}
-			else {
-				if (is_whitespace(ch)) {
-					// k
-					alloc_num(t);
-					advance(t);
-					return 1;
-				}
 
-				switch (ch) {
-				case L'\n':
-					alloc_num(t);
-					return 1;
-				default:
-					// no no
+			switch (t->scope) {
+			case TT_REAL:
+				if (!((ch >= L'0' && ch <= L'9') || ch == L'_')) {
 					t->error = ERROR_INVALID_REAL;
 					return 1;
 				}
+			case TT_INT_DEC:
+				if (ch == L'.') {
+					t->scope = TT_REAL;
+				}
+				else if (!((ch >= L'0' && ch <= L'9') || ch == L'_')) {
+					t->error = ERROR_INVALID_DEC;
+					return 1;
+				}
+				break;
+			case TT_INT_HEX:
+				if (!((ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f') || (ch >= L'A' && ch <= L'F') || ch == L'_')) {
+					t->error = ERROR_INVALID_HEX;
+					return 1;
+				}
+				break;
+			case TT_INT_BIN:
+				if (!(ch == L'0' || ch == L'1' || ch == L'_')) {
+					t->error = ERROR_INVALID_BIN;
+					return 1;
+				}
+				break;
 			}
+
+			advance(t);
 			break;
 
 		case TT_FREEZE:
