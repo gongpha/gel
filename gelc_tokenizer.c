@@ -53,6 +53,22 @@ void advance_big(gelc_tokenizer* t, size_t len) {
 	if (*t->cursor != 0) t->cursor += len;
 }
 
+int is_indent(const wchar_t ch) {
+	return ch == L' ' || ch == L'\t';
+}
+
+int is_numeric(const wchar_t ch) {
+	return ch >= L'0' && ch <= L'9';
+}
+
+int is_hex(const wchar_t ch) {
+	return (ch >= L'a' && ch <= L'f') || (ch >= L'A' && ch <= L'F');
+}
+
+int is_bin(const wchar_t ch) {
+	return ch == L'0' || ch == L'1';
+}
+
 int gelc_tokenizer_read(gelc_tokenizer* t) {
 	for (;;) {
 		const wchar_t ch = *t->cursor;
@@ -237,7 +253,7 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 
 			switch (t->scope) {
 			case TT_REAL:
-				if (!((ch >= L'0' && ch <= L'9') || ch == L'_')) {
+				if (!(is_numeric(ch) || ch == L'_')) {
 					t->error = ERROR_INVALID_REAL;
 					return 1;
 				}
@@ -245,19 +261,19 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 				if (ch == L'.') {
 					t->scope = TT_REAL;
 				}
-				else if (!((ch >= L'0' && ch <= L'9') || ch == L'_')) {
+				else if (!(is_numeric(ch) || ch == L'_')) {
 					t->error = ERROR_INVALID_DEC;
 					return 1;
 				}
 				break;
 			case TT_INT_HEX:
-				if (!((ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f') || (ch >= L'A' && ch <= L'F') || ch == L'_')) {
+				if (!(is_numeric(ch) || is_hex(ch) || ch == L'_')) {
 					t->error = ERROR_INVALID_HEX;
 					return 1;
 				}
 				break;
 			case TT_INT_BIN:
-				if (!(ch == L'0' || ch == L'1' || ch == L'_')) {
+				if (!(is_bin(ch) || ch == L'_')) {
 					t->error = ERROR_INVALID_BIN;
 					return 1;
 				}
@@ -312,7 +328,7 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 				gelc_token_subsource* curr = &t->indents.list[t->scope_data.indent.current_item];
 				size_t pos = t->cursor - t->scope_data.indent.indent_begin;
 
-				if (!(ch == L' ' || ch == L'\t')) {
+				if (!is_indent(ch)) {
 					if (pos > 0) {
 						// finding other character while checking inside indent characters ? no
 						t->error = ERROR_WRONG_INDENT;
@@ -341,7 +357,7 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 
 
 
-			if (ch == L' ' || ch == L'\t') {
+			if (is_indent(ch)) {
 				t->scope_data.indent.indent_begin = t->cursor;
 				advance(t);
 			}
