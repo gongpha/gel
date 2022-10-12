@@ -109,7 +109,15 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 				t->begin = t->cursor;
 				exit = 1;
 				break;
+			case L'@':
+				if (terminate_ident(t)) return 1;
+				t->scope = TT_STABLE_LINK;
+				advance(t);
+				t->begin = t->cursor;
+				exit = 1;
+				break;
 			}
+		
 			if (exit) continue;
 
 			if (ch == L'(' || ch == L')') {
@@ -256,6 +264,16 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 				break;
 			}
 
+			advance(t);
+			break;
+
+		case TT_STABLE_LINK:
+			if (is_whitespace(ch) || ch == L'\n') {
+				alloc_num(t);
+				t->scope = TT_NONE;
+				advance(t);
+				return 1;
+			}
 			advance(t);
 			break;
 
