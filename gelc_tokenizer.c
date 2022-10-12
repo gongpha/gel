@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 void gelc_tokenizer_create(gelc_tokenizer* tokenizer, const wchar_t* source) {
-	tokenizer->source = source;
+	tokenizer->source = source; // keep the source !
 	tokenizer->cursor = source;
 	tokenizer->line_cursor_start = source;
 	tokenizer->scope = TT_NONE;
@@ -11,14 +11,10 @@ void gelc_tokenizer_create(gelc_tokenizer* tokenizer, const wchar_t* source) {
 	tokenizer->line = 1;
 	tokenizer->tune = 0;
 	tokenizer->paren_level = 0;
-	tokenizer->str_escaping = 0;
 	tokenizer->error = ERROR_OK;
 	tokenizer->indents.size = 0;
 	tokenizer->indents.list = NULL;
 	tokenizer->indents.alloc = 0;
-	tokenizer->bypass_indent = 0;
-	tokenizer->new_indent = 0;
-	tokenizer->indent = 0;
 }
 
 void gelc_tokenizer_destroy(const gelc_tokenizer* tokenizer) {
@@ -61,7 +57,8 @@ void advance_big(gelc_tokenizer* t, size_t len) {
 int gelc_tokenizer_read(gelc_tokenizer* t) {
 	for (;;) {
 		const wchar_t ch = *t->cursor;
-		if (ch == 0) if (t->scope == TT_NONE) return 0;
+		if (ch == 0)
+			if (t->scope == TT_NONE && t->parsing_ident == 0) return 0;
 		int exit = 0;
 		switch (t->scope) {
 		case TT_NONE:
@@ -69,6 +66,7 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 			case L'"':
 				if (terminate_ident(t)) return 1;
 				t->scope = TT_STRING;
+				t->scope_data.string.str_escaping = 0;
 				advance(t);
 				t->begin = t->cursor;
 				exit = 1;
@@ -83,12 +81,31 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 				//if (t->tune & TUNE_INDENT)
 				if (t->paren_level == 0) {
 					t->scope = TT_INDENT;
+					t->scope_data.indent.indent_begin = t->cursor;
+					t->scope_data.indent.current_item = 0;
+					t->scope_data.indent.last_level = t->indents.size;
+					t->scope_data.indent.dedenting = 0;
 					t->begin = t->cursor;
 				}
 				return 1;
+			case L'/':
+				if (terminate_ident(t)) return 1;
+				if (*(t->cursor + 1) == L'/') {
+					t->scope = TT_COMMENT;
+					advance_big(t, 2);
+					t->begin = t->cursor;
+					exit = 1;
+				}
+				else if (*(t->cursor + 1) + 1 == L'*') {
+					t->scope = TT_COMMENT_BLOCK;
+					advance_big(t, 2);
+					t->begin = t->cursor;
+					exit = 1;
+				}
+				break;
 			case L'#':
 				if (terminate_ident(t)) return 1;
-				t->scope = TT_COMMENT;
+				t->scope = TT_FREEZE;
 				advance(t);
 				t->begin = t->cursor;
 				exit = 1;
@@ -135,13 +152,13 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 
 
 			const wchar_t* operators[] = GELC_CONST_OPERATORS;
-			const wchar_t* operatorss = GELC_CONST_OPERATORS_SINGLE;
+			const wchar_t operatorss[] = GELC_CONST_OPERATORS_SINGLE;
 
 			for (size_t i = 0; i < sizeof(operators) / sizeof(operators[0]); i++) {
 				const size_t len = wcslen(operators[i]);
 				if (wcsncmp(operators[i], t->cursor, len) == 0) {
 					t->result.type = TT_OPERATOR;
-					t->result.data.subsource.source = operators[i];
+					t->result.data.subsource.source = &operators[i];
 					t->result.data.subsource.size = len;
 					advance_big(t, len);
 					return 1;
@@ -151,7 +168,7 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 				if (operatorss[i] == ch) {
 					if (terminate_ident(t)) return 1;
 					t->result.type = TT_OPERATOR;
-					t->result.data.subsource.source = operatorss[i];
+					t->result.data.subsource.source = &operatorss[i];
 					t->result.data.subsource.size = 1;
 					advance(t);
 					return 1;
@@ -175,8 +192,8 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 
 			break;
 		case TT_STRING:
-			if (t->str_escaping) t->str_escaping = 0;
-			else if (ch == L'\\') t->str_escaping = 1;
+			if (t->scope_data.string.str_escaping) t->scope_data.string.str_escaping = 0;
+			else if (ch == L'\\') t->scope_data.string.str_escaping = 1;
 			else if (ch == L'"') {
 				t->result.type = TT_STRING;
 				subsource(&t->result.data.subsource, t->begin, t->cursor);
@@ -250,61 +267,100 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 			}
 			break;
 
+		case TT_FREEZE:
 		case TT_COMMENT:
 			if (ch == L'\n') {
-				t->result.type = TT_COMMENT;
+				t->result.type = t->scope;
 				subsource(&t->result.data.subsource, t->begin, t->cursor);
+				t->scope = TT_NONE;
 				return 1;
 			}
+			advance(t);
+			break;
+
+		case TT_COMMENT_BLOCK:
+			if (ch == L'*') {
+				if (*(t->cursor + 1) == L'/') {
+					// kthx
+					t->result.type = TT_COMMENT_BLOCK;
+					subsource(&t->result.data.subsource, t->begin, t->cursor);
+					t->scope = TT_NONE;
+					advance_big(t, 2);
+					return 1;
+				}
+			}
+			advance(t);
 			break;
 		case TT_INDENT:
-			// todo : rewrite indent checking by using array of string
-			if (t->bypass_indent == 0) {
-				if (t->indents.size > t->cursor - t->begin) {
-					if (t->indents.list[t->cursor - t->begin] != ch) {
-						// wrong indent ; whether spaces or tabs
+			if (t->scope_data.indent.dedenting > 0) {
+				t->scope_data.indent.dedenting--;
+				t->result.type = TT_DEDENT;
+				if (t->scope_data.indent.dedenting == 0) t->scope = TT_NONE;
+				return 1;
+			}
+			if (t->indents.size > t->scope_data.indent.current_item) {
+				gelc_token_subsource* curr = &t->indents.list[t->scope_data.indent.current_item];
+				size_t pos = t->cursor - t->scope_data.indent.indent_begin;
+
+				if (!(ch == L' ' || ch == L'\t')) {
+					if (pos > 0) {
+						// finding other character while checking inside indent characters ? no
 						t->error = ERROR_WRONG_INDENT;
 						return 1;
 					}
-					t->cursor++;
-					break;
+					// non-indent characters and still have pending items ?
+					// DEDENT
+					t->scope_data.indent.dedenting = t->scope_data.indent.last_level - t->scope_data.indent.current_item;
+					continue;
 				}
 
-				t->bypass_indent = 1;
-			}
-
-			// passed. BUT What 'bout adding more ?
-			if (ch == L' ' || ch == L'\t') {
-
-				if (t->indents.size == t->indents.alloc) {
-					t->indents.alloc = (t->indents.size <= 0 ? 1 : t->indents.size * 2);
-					t->indents.list = realloc(t->indents.list, t->indents.alloc * sizeof(char));
-					if (!t->indents.list) {
-						t->error = ERROR_OUT_OF_MEM;
-						return 1;
-					}
-				}
-				t->indents.list[t->indents.alloc - 1] = ch == L' ' ? ' ' : '\t';
-				t->indents.size++;
-				t->new_indent = 1;
-				// k look more for indent . . .
-				advance(t);
-			}
-			else {
-				if (t->begin == t->cursor) {
-					// wait, no indent ???
+				// cehck each indent characters are same as the source
+				if (curr->source[pos] != ch) {
+					// wrong indent bruh
 					t->error = ERROR_WRONG_INDENT;
 					return 1;
 				}
-				// ok exit
-				if (t->new_indent) t->indent++;
-				t->bypass_indent = 0;
-				t->scope = TT_NONE;
-				t->new_indent = 0;
-				t->result.type = TT_INDENT;
-				return 1;
+				advance(t);
+				if (++pos >= curr->size) {
+					// next
+					t->scope_data.indent.current_item++;
+					t->scope_data.indent.indent_begin = t->cursor;
+				}
+				continue;
 			}
-			break;
+
+
+
+			if (ch == L' ' || ch == L'\t') {
+				t->scope_data.indent.indent_begin = t->cursor;
+				advance(t);
+			}
+			else {
+				if (t->scope_data.indent.indent_begin < t->cursor) {
+					// add to stack
+					if (t->indents.size == t->indents.alloc) {
+						t->indents.alloc = (t->indents.size <= 0 ? 1 : t->indents.size * 2);
+						t->indents.list = realloc(t->indents.list, t->indents.alloc * sizeof(gelc_token_subsource));
+						if (!t->indents.list) {
+							t->error = ERROR_OUT_OF_MEM;
+							return 1;
+						}
+					}
+					gelc_token_subsource* dyn = &t->indents.list[t->indents.alloc - 1];
+					subsource(dyn, t->scope_data.indent.indent_begin, t->cursor);
+					t->indents.size++;
+				}
+				t->scope = TT_NONE;
+				if (t->scope_data.indent.last_level != t->indents.size) {
+					t->result.type = TT_INDENT;
+					return 1;
+				}
+				else {
+					continue;
+				}
+
+
+			}
 		}
 	}
 	return 0;

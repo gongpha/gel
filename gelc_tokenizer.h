@@ -9,14 +9,16 @@
 
 typedef struct {
 	const wchar_t* source;
-	unsigned int size;
+	size_t size;
 } gelc_token_subsource;
 
 typedef enum {
 	TT_NONE,
-	TT_COMMENT,
+	TT_COMMENT, // use double slashes (//) like C
+	TT_COMMENT_BLOCK, // like C. im lazy to describe
+	TT_FREEZE, // just like comment, but highlighted in blue (#) like Python
 	TT_IDENT,
-	TT_STRING, // Unescaped !!!
+	TT_STRING, // NOT UNESCAPED YET !!!
 	TT_INT,
 	TT_INT_HEX,
 	TT_REAL,
@@ -65,15 +67,26 @@ typedef struct {
 	const wchar_t* begin;
 	const wchar_t* line_cursor_start;
 	int paren_level;
-	int str_escaping;
+
 	struct {
-		char* list;
+		gelc_token_subsource* list; // of
 		size_t alloc;
-		size_t size;
+		size_t size; // indent level
 	} indents;
-	int bypass_indent;
-	int new_indent;
-	unsigned int indent;
+
+	union {
+		struct {
+			const wchar_t* indent_begin;
+			size_t current_item;
+			size_t last_level; // use for dedenting too
+			size_t dedenting; // use for dedenting too
+		} indent;
+		struct {
+			int str_escaping;
+		} string;
+	} scope_data;
+
+	
 
 	//
 	gelc_tokenizer_error error;
