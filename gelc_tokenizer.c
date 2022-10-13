@@ -2,6 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 
+#define GELC_CONST_OPERATORS_SINGLE L"+-*/^&%!:=.,<>"
+#define GELC_CONST_OPERATORS {L"=>", L"<=", L">=", L"==", L"!=", L"..."}
+
 void gelc_tokenizer_create(gelc_tokenizer* tokenizer, const wchar_t* source) {
 	tokenizer->source = source; // keep the source !
 	tokenizer->cursor = source;
@@ -194,7 +197,7 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 				const size_t len = wcslen(operators[i]);
 				if (wcsncmp(operators[i], t->cursor, len) == 0) {
 					t->result.type = TT_OPERATOR;
-					t->result.data.subsource.source = &operators[i];
+					t->result.data.subsource.source = t->cursor;
 					t->result.data.subsource.size = len;
 					advance_big(t, len);
 					return 1;
@@ -204,7 +207,7 @@ int gelc_tokenizer_read(gelc_tokenizer* t) {
 				if (operatorss[i] == ch) {
 					if (terminate_ident(t)) return 1;
 					t->result.type = TT_OPERATOR;
-					t->result.data.subsource.source = &operatorss[i];
+					t->result.data.subsource.source = t->cursor;
 					t->result.data.subsource.size = 1;
 					advance(t);
 					return 1;

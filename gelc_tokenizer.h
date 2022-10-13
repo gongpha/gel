@@ -1,9 +1,6 @@
 ﻿#ifndef GELC_TOKENIZER_H
 #define GELC_TOKENIZER_H
 
-#define GELC_CONST_OPERATORS_SINGLE L"+-*/^&%!:=.,<>"
-#define GELC_CONST_OPERATORS {L"=>", L"<=", L">=", L"==", L"!=", L"..."}
-
 #include <stddef.h>
 
 
