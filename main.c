@@ -30,11 +30,9 @@ int main() {
 	fseek(f, 0, SEEK_SET);
 
 	wchar_t* source = malloc(sizeof(wchar_t) * (fs + 1));
-	//fread(source, sizeof(wchar_t), fs, f);
 	fgetws(source, fs + 1, f);
 	fclose(f);
-
-	//const wchar_t* source = L"#abc = 123\ndef = 456\n// hello venus\nhello 123 \"setyor\" omega 0.1 0x99210000 0b10010110 3.1415 .0001 000.100 60_000_000 4.00_00 0b1000_1111_0000 @2a2569300065 {gayland xd 108 (hoho)} // xd\n\tmama\n\tpapa\n\t\tHOHO\nok boomer";
+	
 	gelc_tokenizer t;
 	gelc_tokenizer_create(&t, source);
 	while (gelc_tokenizer_read(&t)) {
